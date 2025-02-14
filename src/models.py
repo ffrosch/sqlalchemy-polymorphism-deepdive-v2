@@ -45,18 +45,13 @@ class User(Base):
 class Report(Base):
     species: Mapped[str]
 
-    association: Mapped[list[ReportParticipant]] = relationship(back_populates="report")
-    participants: AssociationProxy[list[ReportParticipantAssociation]] = association_proxy(
-        "association",
-        "participant",
-        creator=lambda participant: participant
-    )
+    participants: Mapped[list[ReportParticipant]] = relationship(back_populates="report")
 
 
-class RoleEnum(enum.Enum):
-    creator = "creator"
-    reporter = "reporter"
-    observer = "observer"
+class Role(enum.Enum):
+    CREATOR = "creator"
+    REPORTER = "reporter"
+    OBSERVER = "observer"
 
 
 class ReportParticipantAssociation(Base):
@@ -68,21 +63,21 @@ class ReportParticipantAssociation(Base):
 class ReportParticipant(Base):
     report_id: Mapped[int] = mapped_column(ForeignKey(Report.id), nullable=False)
     participant_id: Mapped[int] = mapped_column(ForeignKey(ReportParticipantAssociation.id), nullable=False)
-    role: Mapped[RoleEnum] = mapped_column(
-        Enum(RoleEnum), validate_strings=True, nullable=False
+    role: Mapped[Role] = mapped_column(
+        Enum(Role), validate_strings=True, nullable=False
     )
 
-    report: Mapped[Report] = relationship(init=False)
+    report: Mapped[Report] = relationship(init=False, repr=False)
     participant: Mapped[ReportParticipantAssociation] = relationship()
 
     @validates("role")
     def validate_role(self, key, value):
         if isinstance(value, str):
             try:
-                return RoleEnum(value)
+                return Role(value)
             except ValueError:
                 raise ValueError(f"Invalid role provided: {value}")
-        elif isinstance(value, RoleEnum):
+        elif isinstance(value, Role):
             return value
         else:
             raise ValueError(f"Invalid type for role: {type(value)}")
@@ -105,7 +100,7 @@ class ReportParticipantRegistered(ReportParticipantAssociation):
         ForeignKey(ReportParticipantAssociation.id), init=False, primary_key=True
     )
     user_id: Mapped[int] = mapped_column(ForeignKey(User.id), nullable=False)
-    user: Mapped[User] = relationship(User, lazy="selectin")
+    user: Mapped[User] = relationship(User, lazy="selectin", single_parent=True)
 
     __mapper_args__ = {
         "polymorphic_identity": "registered",
