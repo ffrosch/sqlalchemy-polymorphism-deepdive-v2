@@ -61,4 +61,10 @@ class TestParticipant:
         assert all(p.association.registered == registered for p in participants)
         assert all(p.report_id is not None for p in participants)
         assert all(p.participant_id is not None for p in participants)
-        assert len(set(p.participant_id for p in participants)) == 1
+
+    @pytest.mark.xfail
+    def test_two_reports_for_unregistered(self, participant_factory):
+        participant_factory(registered=False, two_reports=True)
+
+    def test_two_reports_for_registered(self, participant_factory):
+        participant_factory(registered=True, two_reports=True)

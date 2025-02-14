@@ -66,20 +66,32 @@ def create_unregistered(session: Session, n: int = 1):
     return unregistered[0] if n == 1 else unregistered
 
 
-def create_participant(session: Session, roles: Role | list[Role], registered: bool = False):
+def create_participant(
+    session: Session,
+    roles: Role | list[Role] = Role.creator,
+    registered: bool = False,
+    two_reports: bool = False,
+):
     roles = [roles] if isinstance(roles, Role) else roles
-    report = create_report(session)
+    reports = (
+        [create_report(session)]
+        if not two_reports
+        else [create_report(session) for i in range(2)]
+    )
     association = (
         create_registered(session) if registered else create_unregistered(session)
     )
-    participants = [
-        Participant(
-            report=report,
-            association=association,
-            role=role,
-        )
-        for role in roles
-    ]
+
+    participants = []
+    for report in reports:
+        for role in roles:
+            participants.append(
+                Participant(
+                    report=report,
+                    association=association,
+                    role=role,
+                )
+            )
 
     session.add_all(participants)
     session.commit()
