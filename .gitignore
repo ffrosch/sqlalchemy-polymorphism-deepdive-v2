@@ -2,3 +2,4 @@
 .python-version
 database.db
 .pytest_cache
+.env
