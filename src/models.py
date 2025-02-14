@@ -1,6 +1,7 @@
 from __future__ import annotations
 import re
 from sqlalchemy import (
+    Boolean,
     Enum,
     ForeignKey,
     ForeignKeyConstraint,
@@ -49,38 +50,28 @@ class Report(Base):
 
 
 class Role(enum.Enum):
-    CREATOR = "creator"
-    REPORTER = "reporter"
-    OBSERVER = "observer"
+    creator = "creator"
+    reporter = "reporter"
+    observer = "observer"
 
 
 class ReportParticipantAssociation(Base):
-    type: Mapped[str] = mapped_column(String(12), init=False)
+    registered: Mapped[bool] = mapped_column(Boolean, init=False)
 
-    __mapper_args__ = {"polymorphic_on": type}
+    __mapper_args__ = {"polymorphic_on": registered}
 
 
 class ReportParticipant(Base):
-    report_id: Mapped[int] = mapped_column(ForeignKey(Report.id), nullable=False)
-    participant_id: Mapped[int] = mapped_column(ForeignKey(ReportParticipantAssociation.id), nullable=False)
+    __table_args__ = (UniqueConstraint("report_id", "role"),)
+
+    report_id: Mapped[int] = mapped_column(ForeignKey(Report.id), init=False, nullable=False)
+    participant_id: Mapped[int] = mapped_column(ForeignKey(ReportParticipantAssociation.id), init=False, nullable=False)
     role: Mapped[Role] = mapped_column(
-        Enum(Role), validate_strings=True, nullable=False
+        Enum(Role, validate_strings=True), nullable=False
     )
 
-    report: Mapped[Report] = relationship(init=False, repr=False)
-    participant: Mapped[ReportParticipantAssociation] = relationship()
-
-    @validates("role")
-    def validate_role(self, key, value):
-        if isinstance(value, str):
-            try:
-                return Role(value)
-            except ValueError:
-                raise ValueError(f"Invalid role provided: {value}")
-        elif isinstance(value, Role):
-            return value
-        else:
-            raise ValueError(f"Invalid type for role: {type(value)}")
+    report: Mapped[Report] = relationship(repr=False)
+    association: Mapped[ReportParticipantAssociation] = relationship()
 
 
 class ReportParticipantUnregistered(ReportParticipantAssociation):
@@ -90,7 +81,7 @@ class ReportParticipantUnregistered(ReportParticipantAssociation):
     name: Mapped[str]
 
     __mapper_args__ = {
-        "polymorphic_identity": "unregistered",
+        "polymorphic_identity": False,
         "polymorphic_load": "inline",
     }
 
@@ -99,11 +90,11 @@ class ReportParticipantRegistered(ReportParticipantAssociation):
     id: Mapped[int] = mapped_column(
         ForeignKey(ReportParticipantAssociation.id), init=False, primary_key=True
     )
-    user_id: Mapped[int] = mapped_column(ForeignKey(User.id), nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey(User.id), init=False, nullable=False)
     user: Mapped[User] = relationship(User, lazy="selectin", single_parent=True)
 
     __mapper_args__ = {
-        "polymorphic_identity": "registered",
+        "polymorphic_identity": True,
         "polymorphic_load": "inline",
     }
 
