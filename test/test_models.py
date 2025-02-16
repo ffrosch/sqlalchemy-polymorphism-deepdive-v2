@@ -22,19 +22,19 @@ from src.models import (
 class TestRoleEnum:
     def test_create_role(self, participant_factory):
         # One role
-        assert participant_factory(roles=[Role.creator]).role == Role.creator
+        assert participant_factory(roles=[Role.creator]).roles == [Role.creator]
 
         # Same role on different reports
         p1 = participant_factory(roles=[Role.creator])
         p2 = participant_factory(roles=[Role.creator])
-        assert p1.role == Role.creator
-        assert p2.role == Role.creator
+        assert p1.roles == [Role.creator]
+        assert p2.roles == [Role.creator]
 
         # Different roles on same report
-        participant_roles = participant_factory(
+        participant_multiple_roles = participant_factory(
             roles=[Role.creator, Role.reporter, Role.observer]
         )
-        assert len(participant_roles) == 3
+        assert len(participant_multiple_roles.roles) == 3
 
     def test_report_role_not_unique_fails(self, participant_factory):
         """"""
@@ -54,13 +54,12 @@ class TestParticipant:
     )
     def test_create_participant(self, session, participant_factory, registered, roles):
         participant_factory(roles=roles, registered=registered)
-        participants = session.scalars(select(Participant)).all()
+        participant = session.scalar(select(Participant))
 
-        assert len(participants) == len(roles)
-        assert all(p.role in roles for p in participants)
-        assert all(p.association.registered == registered for p in participants)
-        assert all(p.report_id is not None for p in participants)
-        assert all(p.participant_id is not None for p in participants)
+        assert participant.roles == roles
+        assert participant.participant.registered == registered
+        assert participant.report_id is not None
+        assert participant.participant_id is not None
 
     @pytest.mark.xfail
     def test_two_reports_for_unregistered(self, participant_factory):

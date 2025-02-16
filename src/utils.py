@@ -78,21 +78,20 @@ def create_participant(
         if not two_reports
         else [create_report(session) for i in range(2)]
     )
-    association = (
+    participant = (
         create_registered(session) if registered else create_unregistered(session)
     )
 
-    participants = []
     for report in reports:
-        for role in roles:
-            participants.append(
-                Participant(
-                    report=report,
-                    association=association,
-                    role=role,
-                )
+        report.participants.append(
+            Participant(
+                participant=participant,
+                roles=roles,
             )
+        )
 
-    session.add_all(participants)
+    session.add_all(reports)
     session.commit()
+
+    participants = [p for r in reports for p in r.participants]
     return participants[0] if len(participants) == 1 else participants

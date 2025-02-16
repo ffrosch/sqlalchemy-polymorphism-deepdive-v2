@@ -36,17 +36,19 @@ class Base(MappedAsDataclass, DeclarativeBase, init=False):
         first_pass = re.sub(r"(.)([A-Z][a-z]+)", r"\1_\2", cls.__name__)
         return re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", first_pass).lower()
 
-    id: Mapped[int] = mapped_column(init=False, primary_key=True)
-
 
 class User(Base):
+    id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str]
 
 
 class Report(Base):
+    id: Mapped[int] = mapped_column(primary_key=True)
     species: Mapped[str]
 
-    participants: Mapped[list[ReportParticipant]] = relationship(back_populates="report")
+    participants: Mapped[list[ReportParticipant]] = relationship(
+        back_populates="report"
+    )
 
 
 class Role(enum.Enum):
@@ -56,27 +58,31 @@ class Role(enum.Enum):
 
 
 class ReportParticipantAssociation(Base):
-    registered: Mapped[bool] = mapped_column(Boolean, init=False)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    registered: Mapped[bool] = mapped_column(Boolean)
 
     __mapper_args__ = {"polymorphic_on": registered}
 
 
 class ReportParticipant(Base):
-    __table_args__ = (UniqueConstraint("report_id", "role"),)
-
-    report_id: Mapped[int] = mapped_column(ForeignKey(Report.id), init=False, nullable=False)
-    participant_id: Mapped[int] = mapped_column(ForeignKey(ReportParticipantAssociation.id), init=False, nullable=False)
-    role: Mapped[Role] = mapped_column(
-        Enum(Role, validate_strings=True), nullable=False
+    report_id: Mapped[int] = mapped_column(ForeignKey(Report.id), primary_key=True)
+    participant_id: Mapped[int] = mapped_column(
+        ForeignKey(ReportParticipantAssociation.id), primary_key=True
     )
 
     report: Mapped[Report] = relationship(repr=False)
-    association: Mapped[ReportParticipantAssociation] = relationship()
+    participant: Mapped[ReportParticipantAssociation] = relationship()
+    _roles_mapper: Mapped[list[ReportParticipantRole]] = relationship(
+        repr=False,
+    )
+    roles: AssociationProxy[ReportParticipantRole] = association_proxy(
+        "_roles_mapper", "role", creator=lambda role: ReportParticipantRole(role=role)
+    )
 
 
 class ReportParticipantUnregistered(ReportParticipantAssociation):
     id: Mapped[int] = mapped_column(
-        ForeignKey(ReportParticipantAssociation.id), init=False, primary_key=True
+        ForeignKey(ReportParticipantAssociation.id), primary_key=True
     )
     name: Mapped[str]
 
@@ -88,9 +94,9 @@ class ReportParticipantUnregistered(ReportParticipantAssociation):
 
 class ReportParticipantRegistered(ReportParticipantAssociation):
     id: Mapped[int] = mapped_column(
-        ForeignKey(ReportParticipantAssociation.id), init=False, primary_key=True
+        ForeignKey(ReportParticipantAssociation.id), primary_key=True
     )
-    user_id: Mapped[int] = mapped_column(ForeignKey(User.id), init=False, nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey(User.id), nullable=False)
     user: Mapped[User] = relationship(User, lazy="selectin", single_parent=True)
 
     __mapper_args__ = {
@@ -101,3 +107,21 @@ class ReportParticipantRegistered(ReportParticipantAssociation):
     @property
     def name(self) -> str:
         return self.user.name
+
+
+class ReportParticipantRole(Base):
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["report_id", "participant_id"],
+            [ReportParticipant.report_id, ReportParticipant.participant_id],
+        ),
+    )
+
+    role: Mapped[Role] = mapped_column(
+        Enum(Role, validate_strings=True), primary_key=True
+    )
+    report_id: Mapped[int] = mapped_column(primary_key=True)
+    participant_id: Mapped[int] = mapped_column()
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}(role={self.role})"
