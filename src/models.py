@@ -75,7 +75,7 @@ class ReportParticipant(Base):
     _roles_mapper: Mapped[list[ReportParticipantRole]] = relationship(
         repr=False,
     )
-    roles: AssociationProxy[ReportParticipantRole] = association_proxy(
+    roles: AssociationProxy[list[Role]] = association_proxy(
         "_roles_mapper", "role", creator=lambda role: ReportParticipantRole(role=role)
     )
 
