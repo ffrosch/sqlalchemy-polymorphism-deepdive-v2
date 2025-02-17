@@ -167,12 +167,12 @@ class ReportParticipantRole(Base):
     participant_id: Mapped[int] = mapped_column()
 
     __table_args__ = (
+        PrimaryKeyConstraint(role, report_id, name="pk_unique_report_role_combination"),
         ForeignKeyConstraint(
             [report_id, participant_id],
             [ReportParticipant._report_id, ReportParticipant.id],
-            name="fk_report_participant_composite",
+            name="fk_report_participant_composite_reference",
         ),
-        PrimaryKeyConstraint(report_id, role, name="pk_unique_report_role_composite"),
     )
 
     participant: Mapped[ReportParticipant] = relationship(
