@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import enum
 import re
+from typing import Optional
 
 from sqlalchemy import (
     Boolean,
@@ -42,8 +43,8 @@ class Role(enum.Enum):
 
 
 class Base(DeclarativeBase):
-    @declared_attr
-    def __tablename__(cls) -> str:
+    @declared_attr.directive
+    def __tablename__(cls) -> str | None:
         """Define table name for all models as the snake case of the model's name."""
         first_pass = re.sub(r"(.)([A-Z][a-z]+)", r"\1_\2", cls.__name__)
         return re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", first_pass).lower()
@@ -53,72 +54,49 @@ class User(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str]
 
+    def __repr__(self):
+        return f"{self.__class__.__name__}(id={self.id}, name={self.name})"
+
 
 class Report(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     species: Mapped[str]
 
-    report_participant_associations: Mapped[list[ReportParticipant]] = relationship(
+    participants: Mapped[list[ReportParticipant]] = relationship(
         back_populates="report",
         cascade="all, delete-orphan",
         lazy="selectin",
-    )
-    participants: AssociationProxy[list[ReportParticipantAssociation]] = (
-        association_proxy(
-            "report_participant_associations",
-            "participant",
-            creator=lambda participant: ReportParticipant(
-                participant=participant,
-                # `roles` is a custom `__init__` argument on `ReportParticipantAssociation`
-                roles=participant.roles,
-            ),
-        )
     )
 
     def __repr__(self) -> str:
         return (
             f"{self.__class__.__name__}(id={self.id}, "
             f"species={self.species}, "
-            f"participants={self.report_participant_associations})"
+            f"participants={self.participants})"
         )
 
 
-class ReportParticipantAssociation(Base):
-    id: Mapped[int] = mapped_column(primary_key=True)
-    registered: Mapped[bool] = mapped_column(Boolean)
-
-    report_participant_associations: Mapped[ReportParticipant] = relationship(
-        back_populates="participant",
-        cascade="all, delete-orphan",
-    )
-
-    __mapper_args__ = {"polymorphic_on": registered}
-
-    def __init__(self, *args, roles: list[Role] | None = None, **kwargs):
-        """Provided `roles` are used by the `Report.participants` association proxy."""
-        self.roles = roles
-        super().__init__(*args, **kwargs)
-
-    def __repr__(self):
-        return f"{self.__class__.__name__}()"
-
-
 class ReportParticipant(Base):
-    report_id: Mapped[int] = mapped_column(ForeignKey(Report.id), primary_key=True)
-    participant_id: Mapped[int] = mapped_column(
-        ForeignKey(ReportParticipantAssociation.id), primary_key=True
-    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    is_registered: Mapped[bool] = mapped_column(Boolean)
+    report_id: Mapped[int] = mapped_column(ForeignKey(Report.id))
+
+    __mapper_args__ = {"polymorphic_on": is_registered}
+
+    # __table_args__ = Index(
+    #     "only_one_unregistered_participant_per_report",
+    #     id,
+    #     unique=True,
+    #     postgresql_where=(~is_registered),
+    # )
 
     report: Mapped[Report] = relationship(
-        back_populates="report_participant_associations", lazy="selectin"
-    )
-    participant: Mapped[ReportParticipantAssociation] = relationship(
-        back_populates="report_participant_associations",
-        lazy="selectin",
+        back_populates="participants", lazy="selectin"
     )
     role_associations: Mapped[list[ReportParticipantRole]] = relationship(
         cascade="all, delete-orphan",
         lazy="selectin",
+        back_populates="participant",
     )
     roles: AssociationProxy[list[Role]] = association_proxy(
         "role_associations",
@@ -127,13 +105,11 @@ class ReportParticipant(Base):
     )
 
     def __repr__(self):
-        return f"{repr(self.participant)[:-1]}, roles={self.roles})"
+        return f"{self.__class__.__name__}(roles={self.roles})"
 
 
-class ReportParticipantUnregistered(ReportParticipantAssociation):
-    id: Mapped[int] = mapped_column(
-        ForeignKey(ReportParticipantAssociation.id), primary_key=True
-    )
+class ReportParticipantUnregistered(ReportParticipant):
+    id: Mapped[int] = mapped_column(ForeignKey(ReportParticipant.id), primary_key=True)
     name: Mapped[str]
 
     __mapper_args__ = {
@@ -142,42 +118,43 @@ class ReportParticipantUnregistered(ReportParticipantAssociation):
     }
 
     def __repr__(self):
-        return f"{super().__repr__()[:-1]}name={self.name})"
+        return f'{super().__repr__()[:-1]}, name="{self.name}")'
 
 
-class ReportParticipantRegistered(ReportParticipantAssociation):
-    id: Mapped[int] = mapped_column(
-        ForeignKey(ReportParticipantAssociation.id), primary_key=True
-    )
-    user_id: Mapped[int] = mapped_column(ForeignKey(User.id), nullable=False)
-    user: Mapped[User] = relationship(User, lazy="selectin", single_parent=True)
+class ReportParticipantRegistered(ReportParticipant):
+    @declared_attr.directive
+    def __tablename__(cls) -> Optional[str]:
+        """override __tablename__ so that this class is single-inheritance to ReportParticipant"""
+        return None
+
+    user_id: Mapped[int] = mapped_column(ForeignKey(User.id), nullable=True)
+    user: Mapped[User] = relationship(User, lazy="selectin")
 
     __mapper_args__ = {
         "polymorphic_identity": True,
         "polymorphic_load": "inline",
     }
 
+    @validates("user_id")
+    def validate_user_id(self, key, value):
+        if value is None:
+            raise ValueError("User ID cannot be None")
+        return value
+
     @property
     def name(self) -> str:
         return self.user.name
 
     def __repr__(self):
-        return f"{super().__repr__()[:-1]}user_id={self.user_id}, name={self.name})"
+        return f'{super().__repr__()[:-1]}, user_id={self.user_id}, name="{self.name}")'
 
 
 class ReportParticipantRole(Base):
-    __table_args__ = (
-        ForeignKeyConstraint(
-            ["report_id", "participant_id"],
-            [ReportParticipant.report_id, ReportParticipant.participant_id],
-        ),
-    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    participant_id: Mapped[int] = mapped_column(ForeignKey(ReportParticipant.id))
+    role: Mapped[Role] = mapped_column(Enum(Role, validate_strings=True))
 
-    role: Mapped[Role] = mapped_column(
-        Enum(Role, validate_strings=True), primary_key=True
-    )
-    report_id: Mapped[int] = mapped_column(primary_key=True)
-    participant_id: Mapped[int] = mapped_column()
+    participant: Mapped[ReportParticipant] = relationship(back_populates="role_associations")
 
     def __repr__(self):
         return f"{self.__class__.__name__}(role={self.role.value})"
