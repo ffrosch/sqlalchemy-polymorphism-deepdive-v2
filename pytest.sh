@@ -9,5 +9,5 @@ while true; do
     clear
     # -s: show output of "print()" statements
     # -v: show executed test names
-    pytest -s -v
+    pytest -s -v -x
 done

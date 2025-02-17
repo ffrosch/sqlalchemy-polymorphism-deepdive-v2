@@ -1,4 +1,5 @@
 from __future__ import annotations
+from dataclasses import field
 import re
 from sqlalchemy import (
     Boolean,
@@ -7,6 +8,7 @@ from sqlalchemy import (
     ForeignKeyConstraint,
     UniqueConstraint,
     and_,
+    event,
     exists,
     func,
     select,
@@ -46,8 +48,18 @@ class Report(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     species: Mapped[str]
 
-    participants: Mapped[list[ReportParticipant]] = relationship(
-        back_populates="report"
+    participant_associations: Mapped[list[ReportParticipant]] = relationship(
+        back_populates="report",
+    )
+    participants: AssociationProxy[list[ReportParticipantAssociation]] = association_proxy(
+        "participant_associations",
+        "participant",
+        creator=lambda participant: ReportParticipant(
+            participant=participant,
+            # `roles` is a custom `__init__` argument on `ReportParticipantAssociation`
+            roles=participant.roles,
+        ),
+        repr=False,
     )
 
 
@@ -63,6 +75,11 @@ class ReportParticipantAssociation(Base):
 
     __mapper_args__ = {"polymorphic_on": registered}
 
+    def __init__(self, *args, roles: list[Role] | None = None, **kwargs):
+        """Provided `roles` are used by the `Report.participants` association proxy."""
+        self.roles = roles
+        super().__init__(*args, **kwargs)
+
 
 class ReportParticipant(Base):
     report_id: Mapped[int] = mapped_column(ForeignKey(Report.id), primary_key=True)
@@ -72,11 +89,11 @@ class ReportParticipant(Base):
 
     report: Mapped[Report] = relationship(repr=False)
     participant: Mapped[ReportParticipantAssociation] = relationship()
-    _roles_mapper: Mapped[list[ReportParticipantRole]] = relationship(
+    role_associations: Mapped[list[ReportParticipantRole]] = relationship(
         repr=False,
     )
     roles: AssociationProxy[list[Role]] = association_proxy(
-        "_roles_mapper", "role", creator=lambda role: ReportParticipantRole(role=role)
+        "role_associations", "role", creator=lambda role: ReportParticipantRole(role=role)
     )
 
 

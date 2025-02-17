@@ -81,14 +81,10 @@ def create_participant(
     participant = (
         create_registered(session) if registered else create_unregistered(session)
     )
+    participant.roles = roles
 
     for report in reports:
-        report.participants.append(
-            Participant(
-                participant=participant,
-                roles=roles,
-            )
-        )
+        report.participants.append(participant)
 
     session.add_all(reports)
     session.commit()
