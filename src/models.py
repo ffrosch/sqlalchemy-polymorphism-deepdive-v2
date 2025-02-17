@@ -90,12 +90,13 @@ class ReportParticipant(Base):
     )
 
     report: Mapped[Report] = relationship(
-        back_populates="participants", lazy="selectin"
+        back_populates="participants",
+        lazy="selectin",
     )
     role_associations: Mapped[list[ReportParticipantRole]] = relationship(
+        back_populates="participant",
         cascade="all, delete-orphan",
         lazy="selectin",
-        back_populates="participant",
     )
     roles: AssociationProxy[list[Role]] = association_proxy(
         "role_associations",
@@ -117,8 +118,11 @@ class ReportParticipant(Base):
     @report_id.setter
     def report_id(self, value):
         if self._report_id is not None:
-            raise AttributeError("The report_id associated with a participant cannot be changed once set.")
+            raise AttributeError(
+                "The report_id associated with a participant cannot be changed once set."
+            )
         self._report_id = value
+
 
 class ReportParticipantUnregistered(ReportParticipant):
     id: Mapped[int] = mapped_column(ForeignKey(ReportParticipant.id), primary_key=True)
