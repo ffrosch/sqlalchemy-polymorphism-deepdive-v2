@@ -10,6 +10,7 @@ from sqlalchemy import (
     ForeignKey,
     ForeignKeyConstraint,
     Index,
+    PrimaryKeyConstraint,
     String,
     UniqueConstraint,
     and_,
@@ -78,17 +79,15 @@ class Report(Base):
 
 class ReportParticipant(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
+    _report_id: Mapped[int] = mapped_column("report_id", ForeignKey(Report.id))
     is_registered: Mapped[bool] = mapped_column(Boolean)
-    report_id: Mapped[int] = mapped_column(ForeignKey(Report.id))
 
     __mapper_args__ = {"polymorphic_on": is_registered}
-
-    # __table_args__ = Index(
-    #     "only_one_unregistered_participant_per_report",
-    #     id,
-    #     unique=True,
-    #     postgresql_where=(~is_registered),
-    # )
+    __table_args__ = (
+        UniqueConstraint(
+            id, _report_id, name="uq_id_report_required_by_foreignkey_composite_on_role"
+        ),
+    )
 
     report: Mapped[Report] = relationship(
         back_populates="participants", lazy="selectin"
@@ -105,8 +104,21 @@ class ReportParticipant(Base):
     )
 
     def __repr__(self):
-        return f"{self.__class__.__name__}(roles={self.roles})"
+        return f"{self.__class__.__name__}(id={self.id}, report_id={self.report_id}, roles={self.roles})"
 
+    def __init__(self, *args, report_id: int, **kwargs):
+        self.report_id = report_id
+        super().__init__(*args, **kwargs)
+
+    @property
+    def report_id(self):
+        return self._report_id
+
+    @report_id.setter
+    def report_id(self, value):
+        if self._report_id is not None:
+            raise AttributeError("The report_id associated with a participant cannot be changed once set.")
+        self._report_id = value
 
 class ReportParticipantUnregistered(ReportParticipant):
     id: Mapped[int] = mapped_column(ForeignKey(ReportParticipant.id), primary_key=True)
@@ -136,7 +148,7 @@ class ReportParticipantRegistered(ReportParticipant):
     }
 
     @validates("user_id")
-    def validate_user_id(self, key, value):
+    def validate_user_id(self, key, value: int):
         if value is None:
             raise ValueError("User ID cannot be None")
         return value
@@ -150,11 +162,26 @@ class ReportParticipantRegistered(ReportParticipant):
 
 
 class ReportParticipantRole(Base):
-    id: Mapped[int] = mapped_column(primary_key=True)
-    participant_id: Mapped[int] = mapped_column(ForeignKey(ReportParticipant.id))
     role: Mapped[Role] = mapped_column(Enum(Role, validate_strings=True))
+    report_id: Mapped[int] = mapped_column()
+    participant_id: Mapped[int] = mapped_column()
 
-    participant: Mapped[ReportParticipant] = relationship(back_populates="role_associations")
+    __table_args__ = (
+        ForeignKeyConstraint(
+            [report_id, participant_id],
+            [ReportParticipant._report_id, ReportParticipant.id],
+            name="fk_report_participant_composite",
+        ),
+        PrimaryKeyConstraint(report_id, role, name="pk_unique_report_role_composite"),
+    )
+
+    participant: Mapped[ReportParticipant] = relationship(
+        back_populates="role_associations"
+    )
 
     def __repr__(self):
-        return f"{self.__class__.__name__}(role={self.role.value})"
+        return (
+            f"{self.__class__.__name__}(report_id={self.report_id}, "
+            f"participant_id={self.participant_id}, "
+            f"role={self.role.value})"
+        )
