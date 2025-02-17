@@ -31,6 +31,15 @@ from sqlalchemy.orm import (
 )
 
 
+class Role(enum.Enum):
+    creator = "creator"
+    reporter = "reporter"
+    observer = "observer"
+
+    def __repr__(self):
+        return f'"{self.value}"'
+
+
 class Base(DeclarativeBase):
     @declared_attr
     def __tablename__(cls) -> str:
@@ -48,39 +57,39 @@ class Report(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     species: Mapped[str]
 
-    participant_associations: Mapped[list[ReportParticipant]] = relationship(
+    report_participant_associations: Mapped[list[ReportParticipant]] = relationship(
         back_populates="report",
+        cascade="all, delete-orphan",
+        lazy="selectin",
     )
-    participants: AssociationProxy[list[ReportParticipantAssociation]] = association_proxy(
-        "participant_associations",
-        "participant",
-        creator=lambda participant: ReportParticipant(
-            participant=participant,
-            # `roles` is a custom `__init__` argument on `ReportParticipantAssociation`
-            roles=participant.roles,
-        ),
+    participants: AssociationProxy[list[ReportParticipantAssociation]] = (
+        association_proxy(
+            "report_participant_associations",
+            "participant",
+            creator=lambda participant: ReportParticipant(
+                participant=participant,
+                # `roles` is a custom `__init__` argument on `ReportParticipantAssociation`
+                roles=participant.roles,
+            ),
+        )
     )
 
     def __repr__(self) -> str:
         return (
             f"{self.__class__.__name__}(id={self.id}, "
             f"species={self.species}, "
-            f"participants={self.participant_associations})"
+            f"participants={self.report_participant_associations})"
         )
-
-
-class Role(enum.Enum):
-    creator = "creator"
-    reporter = "reporter"
-    observer = "observer"
-
-    def __repr__(self):
-        return f'"{self.value}"'
 
 
 class ReportParticipantAssociation(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     registered: Mapped[bool] = mapped_column(Boolean)
+
+    report_participant_associations: Mapped[ReportParticipant] = relationship(
+        back_populates="participant",
+        cascade="all, delete-orphan",
+    )
 
     __mapper_args__ = {"polymorphic_on": registered}
 
@@ -90,9 +99,7 @@ class ReportParticipantAssociation(Base):
         super().__init__(*args, **kwargs)
 
     def __repr__(self):
-        return (
-            f"{self.__class__.__name__}()"
-        )
+        return f"{self.__class__.__name__}()"
 
 
 class ReportParticipant(Base):
@@ -101,18 +108,26 @@ class ReportParticipant(Base):
         ForeignKey(ReportParticipantAssociation.id), primary_key=True
     )
 
-    report: Mapped[Report] = relationship()
-    participant: Mapped[ReportParticipantAssociation] = relationship()
-    role_associations: Mapped[list[ReportParticipantRole]] = relationship()
+    report: Mapped[Report] = relationship(
+        back_populates="report_participant_associations",
+        lazy="selectin"
+    )
+    participant: Mapped[ReportParticipantAssociation] = relationship(
+        back_populates="report_participant_associations",
+        lazy="selectin",
+    )
+    role_associations: Mapped[list[ReportParticipantRole]] = relationship(
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
     roles: AssociationProxy[list[Role]] = association_proxy(
-        "role_associations", "role", creator=lambda role: ReportParticipantRole(role=role)
+        "role_associations",
+        "role",
+        creator=lambda role: ReportParticipantRole(role=role),
     )
 
     def __repr__(self):
-        return (
-            f"{repr(self.participant)[:-1]}, "
-            f"roles={self.roles})"
-        )
+        return f"{repr(self.participant)[:-1]}, roles={self.roles})"
 
 
 class ReportParticipantUnregistered(ReportParticipantAssociation):
@@ -127,9 +142,7 @@ class ReportParticipantUnregistered(ReportParticipantAssociation):
     }
 
     def __repr__(self):
-        return (
-            f"{super().__repr__()[:-1]}name={self.name})"
-        )
+        return f"{super().__repr__()[:-1]}name={self.name})"
 
 
 class ReportParticipantRegistered(ReportParticipantAssociation):
@@ -149,9 +162,7 @@ class ReportParticipantRegistered(ReportParticipantAssociation):
         return self.user.name
 
     def __repr__(self):
-        return (
-            f"{super().__repr__()[:-1]}user_id={self.user_id}, name={self.name})"
-        )
+        return f"{super().__repr__()[:-1]}user_id={self.user_id}, name={self.name})"
 
 
 class ReportParticipantRole(Base):
