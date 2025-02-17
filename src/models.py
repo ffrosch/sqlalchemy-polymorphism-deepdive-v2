@@ -1,22 +1,24 @@
 from __future__ import annotations
-from dataclasses import field
+
+import enum
 import re
+
 from sqlalchemy import (
     Boolean,
     Enum,
     ForeignKey,
     ForeignKeyConstraint,
+    Index,
+    String,
     UniqueConstraint,
     and_,
     event,
     exists,
     func,
     select,
-    String,
 )
 from sqlalchemy.ext.associationproxy import AssociationProxy, association_proxy
 from sqlalchemy.ext.hybrid import hybrid_method, hybrid_property
-import enum
 from sqlalchemy.orm import (
     DeclarativeBase,
     Mapped,
@@ -27,7 +29,6 @@ from sqlalchemy.orm import (
     relationship,
     validates,
     with_polymorphic,
-    MappedAsDataclass,
 )
 
 
@@ -109,8 +110,7 @@ class ReportParticipant(Base):
     )
 
     report: Mapped[Report] = relationship(
-        back_populates="report_participant_associations",
-        lazy="selectin"
+        back_populates="report_participant_associations", lazy="selectin"
     )
     participant: Mapped[ReportParticipantAssociation] = relationship(
         back_populates="report_participant_associations",
