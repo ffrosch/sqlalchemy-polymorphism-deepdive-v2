@@ -31,7 +31,7 @@ from sqlalchemy.orm import (
 )
 
 
-class Base(MappedAsDataclass, DeclarativeBase, init=False):
+class Base(DeclarativeBase):
     @declared_attr
     def __tablename__(cls) -> str:
         """Define table name for all models as the snake case of the model's name."""
@@ -59,14 +59,23 @@ class Report(Base):
             # `roles` is a custom `__init__` argument on `ReportParticipantAssociation`
             roles=participant.roles,
         ),
-        repr=False,
     )
+
+    def __repr__(self) -> str:
+        return (
+            f"{self.__class__.__name__}(id={self.id}, "
+            f"species={self.species}, "
+            f"participants={self.participant_associations})"
+        )
 
 
 class Role(enum.Enum):
     creator = "creator"
     reporter = "reporter"
     observer = "observer"
+
+    def __repr__(self):
+        return f'"{self.value}"'
 
 
 class ReportParticipantAssociation(Base):
@@ -80,6 +89,11 @@ class ReportParticipantAssociation(Base):
         self.roles = roles
         super().__init__(*args, **kwargs)
 
+    def __repr__(self):
+        return (
+            f"{self.__class__.__name__}()"
+        )
+
 
 class ReportParticipant(Base):
     report_id: Mapped[int] = mapped_column(ForeignKey(Report.id), primary_key=True)
@@ -87,14 +101,18 @@ class ReportParticipant(Base):
         ForeignKey(ReportParticipantAssociation.id), primary_key=True
     )
 
-    report: Mapped[Report] = relationship(repr=False)
+    report: Mapped[Report] = relationship()
     participant: Mapped[ReportParticipantAssociation] = relationship()
-    role_associations: Mapped[list[ReportParticipantRole]] = relationship(
-        repr=False,
-    )
+    role_associations: Mapped[list[ReportParticipantRole]] = relationship()
     roles: AssociationProxy[list[Role]] = association_proxy(
         "role_associations", "role", creator=lambda role: ReportParticipantRole(role=role)
     )
+
+    def __repr__(self):
+        return (
+            f"{repr(self.participant)[:-1]}, "
+            f"roles={self.roles})"
+        )
 
 
 class ReportParticipantUnregistered(ReportParticipantAssociation):
@@ -107,6 +125,11 @@ class ReportParticipantUnregistered(ReportParticipantAssociation):
         "polymorphic_identity": False,
         "polymorphic_load": "inline",
     }
+
+    def __repr__(self):
+        return (
+            f"{super().__repr__()[:-1]}name={self.name})"
+        )
 
 
 class ReportParticipantRegistered(ReportParticipantAssociation):
@@ -125,6 +148,11 @@ class ReportParticipantRegistered(ReportParticipantAssociation):
     def name(self) -> str:
         return self.user.name
 
+    def __repr__(self):
+        return (
+            f"{super().__repr__()[:-1]}user_id={self.user_id}, name={self.name})"
+        )
+
 
 class ReportParticipantRole(Base):
     __table_args__ = (
@@ -141,4 +169,4 @@ class ReportParticipantRole(Base):
     participant_id: Mapped[int] = mapped_column()
 
     def __repr__(self):
-        return f"{self.__class__.__name__}(role={self.role})"
+        return f"{self.__class__.__name__}(role={self.role.value})"
